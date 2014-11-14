@@ -63,22 +63,22 @@ T parseInteger(const uint8_t* const ptr, V&&...args)
 
 //start fsinfo
 
-void fsinfo(uint16_t BPB_BytsPerSec, uint8_t BPB_SecPerClus)
+void fsinfo(uint16_t BPB_BytsPerSec, uint8_t BPB_SecPerClus, uint32_t BPB_TotSec32, uint8_t BPB_NumFATs, uint32_t BPB_FATSz32, uint32_t FSI_Free_Count)
 {
 	//print following things
 
 		//Bytes per Sector
 			cout << "The Bytes per Sector are: " << BPB_BytsPerSec << endl;
 		//Sectors per Cluster
-			cout << "The Sector per Cluster are: " << BPB_SecPerClus << endl;
+			cout << "The Sectors per Cluster are: " << int(BPB_SecPerClus) << endl;
 		//Total Sectors
-
+			cout << "The Total Sectors are: " << BPB_TotSec32 << endl;
 		//Number of FATs
-
+			cout << "The Number of FATs are: " <<  int(BPB_NumFATs) << endl;
 		//Sectors per FAT
-
+			cout << "The Sectors per FAT are: " <<  BPB_FATSz32 << endl;
 		//Number of free sectors
-
+			cout << "The Number of Free Sectors are: " << FSI_Free_Count << endl;
 }
 //end fsinfo
 
@@ -106,10 +106,15 @@ auto fdata = (uint8_t*)mmap
 
 uint16_t BPB_BytsPerSec = parseInteger<uint16_t, 512, 1024, 2048, 4096>(fdata + 11);
 uint8_t BPB_SecPerClus = parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
+uint32_t BPB_TotSec32 = parseInteger<uint32_t>(fdata + 32, [](uint32_t v){return v!=0;});
+uint8_t BPB_NumFATs = parseInteger<uint8_t>(fdata + 16, [](uint8_t v){return v!=0;});
+uint32_t BPB_FATSz32 = ParseInteger<uint32_t>(fdata + 36);
+uint16_t BPB_FSInfo = ParseInteger<uint16_t>(fdata + 48);
+uint32_t FSI_Free_Count = ParseInteger<uint32_t>(fdata + BPB_FSInfo*BPB_BytsPerSec + 488);
 
-fsinfo( BPB_BytsPerSec, BPB_SecPerClus);
+fsinfo( BPB_BytsPerSec, BPB_SecPerClus, BPB_TotSec32, BPB_NumFATs, BPB_FATSz32, FSI_Free_Count);
 
-//not closing file because we aint p***y b*****s, the OS is my dawg he got it on lock   <----do not remove
+//not closing file because we aint pussy bitches, the OS is my dawg he got it on lock   <----do not remove
 //first things first need to make the filesystem work
 
 

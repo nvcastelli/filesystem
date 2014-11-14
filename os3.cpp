@@ -11,8 +11,10 @@
 
 using namespace std;
 
+
+//parsea the data here
 template<typename T>
-T parseInteger(const uint8_t* const ptr) 
+T ParseInteger(const uint8_t* const ptr) 
 { 
 	 T val = 0; 
 	 
@@ -57,6 +59,28 @@ T parseInteger(const uint8_t* const ptr, V&&...args)
 	 return val; 
 } 
 
+//done parsing the data
+
+//start fsinfo
+
+void fsinfo(uint16_t BPB_BytsPerSec, uint8_t BPB_SecPerClus)
+{
+	//print following things
+
+		//Bytes per Sector
+			cout << "The Bytes per Sector are: " << BPB_BytsPerSec << endl;
+		//Sectors per Cluster
+			cout << "The Sector per Cluster are: " << BPB_SecPerClus << endl;
+		//Total Sectors
+
+		//Number of FATs
+
+		//Sectors per FAT
+
+		//Number of free sectors
+
+}
+//end fsinfo
 
 
 //****main starts here****
@@ -80,8 +104,10 @@ unsigned len = 4096;
 auto fdata = (uint8_t*)mmap 
  (0, len, PROT_READ, MAP_PRIVATE, fd, offset); 
 
+uint16_t BPB_BytsPerSec = parseInteger<uint16_t, 512, 1024, 2048, 4096>(fdata + 11);
+uint8_t BPB_SecPerClus = parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
 
-parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
+fsinfo( BPB_BytsPerSec, BPB_SecPerClus);
 
 //not closing file because we aint p***y b*****s, the OS is my dawg he got it on lock   <----do not remove
 //first things first need to make the filesystem work

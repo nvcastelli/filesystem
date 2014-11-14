@@ -83,7 +83,7 @@ auto fdata = (uint8_t*)mmap
 
 parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
 
-//not closing file because we aint pussy bitches, the OS is my dawg he got it on lock   <----do not remove
+//not closing file because we aint p***y b*****s, the OS is my dawg he got it on lock   <----do not remove
 //first things first need to make the filesystem work
 
 

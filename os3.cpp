@@ -27,12 +27,12 @@ bool parse_input(const string, string&, string&, string&);
 bool parse_input_quoted_data(const string, string&, string&, string&);
 void fat32_fsinfo(uint16_t, uint8_t, uint32_t, uint8_t, uint32_t, uint32_t);
 // void fat32_open();
-void fat32_close(string, vector<string>&, vector<string>&);
+void fat32_close(string, vector<string>&, vector<string>&, vector<uint32_t>&);
 // void fat32_create();
 // void fat32_read();
 // void fat32_write();
 // void fat32_rm();
-// void fat32_cd();
+void fat32_cd(string, uint32_t&, const uint32_t);
 // void fat32_ls();
 // void fat32_mkdir();
 // void fat32_rmdir();
@@ -44,11 +44,15 @@ int main(int argc, char *argv[])
 {
 	vector<string> filenamevector;
 	vector<string> modevector;
+	vector<uint32_t> dirvector;
 	string inputstring;
 	string arg1;
 	string arg2;
 	string arg3;
 	string arg4;
+	unsigned int FATSz;
+	unsigned int TotSec;
+	uint32_t curdir;
 	
 	if(argc != 2){
 		cout << "Improper number of arguments" << endl;
@@ -69,15 +73,56 @@ int main(int argc, char *argv[])
 	
 	uint16_t BPB_BytsPerSec = parseInteger<uint16_t, 512, 1024, 2048, 4096>(fdata + 11);
 	uint8_t BPB_SecPerClus = parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
-	uint32_t BPB_TotSec32 = parseInteger<uint32_t>(fdata + 32, [](uint32_t v){return v!=0;});
+	uint16_t BPB_RsvdSecCnt = parseInteger<uint16_t>(fdata + 14, [](uint16_t v){return v!=0;});
 	uint8_t BPB_NumFATs = parseInteger<uint8_t>(fdata + 16, [](uint8_t v){return v!=0;});
+	uint16_t BPB_RootEntCnt = parseInteger<uint16_t>(fdata + 17);
+	uint16_t BPB_TotSec16 = parseInteger<uint16_t>(fdata + 19);
+	uint16_t BPB_FATSz16 = parseInteger<uint16_t>(fdata + 22);
+	uint32_t BPB_TotSec32 = parseInteger<uint32_t>(fdata + 32);
 	uint32_t BPB_FATSz32 = parseInteger<uint32_t>(fdata + 36);
+	uint32_t BPB_RootClus = parseInteger<uint32_t>(fdata + 44);
 	uint16_t BPB_FSInfo = parseInteger<uint16_t>(fdata + 48);
 	uint32_t FSI_Free_Count = parseInteger<uint32_t>(fdata + BPB_FSInfo*BPB_BytsPerSec + 488);
 
 	// done parsing the data
 	
-	//first things first need to make the filesystem work
+	// check whether image file is FAT32 or not
+	unsigned int RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytsPerSec - 1))
+	/ BPB_BytsPerSec;
+	
+	if (BPB_FATSz16 != 0)
+		FATSz = BPB_FATSz16;
+	else
+		FATSz = BPB_FATSz32;
+	
+	if (BPB_TotSec16 != 0)
+		TotSec = BPB_TotSec16;
+	else
+		TotSec = BPB_TotSec32;
+	
+	unsigned int DataSec = TotSec - (BPB_RsvdSecCnt + (BPB_NumFATs * FATSz)
+	+ RootDirSectors);
+	unsigned int CountofClusters = DataSec / BPB_SecPerClus;
+	
+	if (CountofClusters < 65525)
+	{
+		// volume is not FAT32, terminate program
+		cout << "Error: image file is not FAT32" << endl;
+		return 1;
+	}
+	
+	// calculate the first data sector
+	unsigned int FirstDataSector = BPB_RsvdSecCnt + (BPB_NumFATs * FATSz);
+	
+	// set initial directory to root directory
+	curdir = BPB_RootClus;
+	// FirstSectorofCluster = ((N - 2) * BPB_SecPerClus) + FirstDataSector;
+	// (N = valid data cluster number)
+	
+	// prints values on FAQ page
+	/*cout << BPB_BytsPerSec << endl << (int)BPB_SecPerClus << endl
+	<< BPB_RsvdSecCnt << endl << (int)BPB_NumFATs << endl << BPB_FATSz16
+	<< endl << BPB_FATSz32 << endl << BPB_RootClus << endl;*/
 	
 	while (1)
 	{
@@ -112,7 +157,8 @@ int main(int argc, char *argv[])
 			cout << "user entered " << arg1 << endl;
 			if (parse_input(inputstring, arg2))
 			{
-				// fat32_close();
+				fat32_close(arg2, filenamevector, modevector,
+				dirvector);
 			}
 		}
 		
@@ -408,7 +454,7 @@ uint32_t FSI_Free_Count)
 }
 
 void fat32_close(string file_name, vector<string>& filenamevector,
-vector<string>& modevector)
+vector<string>& modevector, vector<uint32_t>& dirvector)
 {
 	for (unsigned int i = 0; i < filenamevector.size(); ++i)
 	{
@@ -416,10 +462,22 @@ vector<string>& modevector)
 		{
 			filenamevector.erase(filenamevector.begin() + i);
 			modevector.erase(modevector.begin() + i);
+			dirvector.erase(dirvector.begin() + i);
 			cout << file_name << " is now closed" << endl;
 			return;
 		}
 	}
 	
 	cout << "could not close " << file_name << endl;
+}
+
+void fat32_cd(string dir_name, uint32_t& curdir, const uint32_t BPB_RootClus)
+{
+	if (!dir_name.compare("/"))
+	{
+		curdir = BPB_RootClus;
+		return;
+	}
+	
+	
 }

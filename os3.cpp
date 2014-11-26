@@ -16,6 +16,29 @@ const size_t NPOS = string::npos;
 const string READ = "r";
 const string WRITE = "w";
 const string READWRITE = "rw";
+vector<string> filenamevector;
+vector<string> modevector;
+vector<uint32_t> dirvector;
+uint8_t *fdata;
+uint32_t curdir;
+uint16_t BPB_BytsPerSec;
+uint8_t BPB_SecPerClus;
+uint16_t BPB_RsvdSecCnt;
+uint8_t BPB_NumFATs;
+uint16_t BPB_RootEntCnt;
+uint16_t BPB_TotSec16;
+uint16_t BPB_FATSz16;
+uint32_t BPB_TotSec32;
+uint32_t BPB_FATSz32;
+uint32_t BPB_RootClus;
+uint16_t BPB_FSInfo;
+uint32_t FSI_Free_Count;
+unsigned int RootDirSectors;
+unsigned int FATSz;
+unsigned int TotSec;
+unsigned int DataSec;
+unsigned int CountofClusters;
+unsigned int FirstDataSector;
 
 template<typename T, const T...tArgs>
 T parseInteger(const uint8_t* const ptr);
@@ -25,15 +48,16 @@ bool parse_input(const string, string&);
 bool parse_input(const string, string&, string&);
 bool parse_input(const string, string&, string&, string&);
 bool parse_input_quoted_data(const string, string&, string&, string&);
-void fat32_fsinfo(uint16_t, uint8_t, uint32_t, uint8_t, uint32_t, uint32_t);
+uint32_t find_dir(string, uint32_t);
+void fat32_fsinfo();
 // void fat32_open();
-void fat32_close(string, vector<string>&, vector<string>&, vector<uint32_t>&);
+void fat32_close(string);
 // void fat32_create();
 // void fat32_read();
 // void fat32_write();
 // void fat32_rm();
-void fat32_cd(string, uint32_t&, const uint32_t);
-// void fat32_ls();
+void fat32_cd(string);
+void fat32_ls(string);
 // void fat32_mkdir();
 // void fat32_rmdir();
 // void fat32_size();
@@ -42,17 +66,11 @@ void fat32_cd(string, uint32_t&, const uint32_t);
 //****main starts here****
 int main(int argc, char *argv[])
 {
-	vector<string> filenamevector;
-	vector<string> modevector;
-	vector<uint32_t> dirvector;
 	string inputstring;
 	string arg1;
 	string arg2;
 	string arg3;
 	string arg4;
-	unsigned int FATSz;
-	unsigned int TotSec;
-	uint32_t curdir;
 	
 	if(argc != 2){
 		cout << "Improper number of arguments" << endl;
@@ -68,26 +86,29 @@ int main(int argc, char *argv[])
 	
 	int offset = 0;
 	unsigned len = 4096;
-	auto fdata = (uint8_t*)mmap
-	(0, len, PROT_READ, MAP_PRIVATE, fd, offset);
+	fdata = (uint8_t*)mmap(0, len, PROT_READ, MAP_PRIVATE, fd, offset);
 	
-	uint16_t BPB_BytsPerSec = parseInteger<uint16_t, 512, 1024, 2048, 4096>(fdata + 11);
-	uint8_t BPB_SecPerClus = parseInteger<uint8_t>(fdata + 13, [](uint8_t v){return v!=0;});
-	uint16_t BPB_RsvdSecCnt = parseInteger<uint16_t>(fdata + 14, [](uint16_t v){return v!=0;});
-	uint8_t BPB_NumFATs = parseInteger<uint8_t>(fdata + 16, [](uint8_t v){return v!=0;});
-	uint16_t BPB_RootEntCnt = parseInteger<uint16_t>(fdata + 17);
-	uint16_t BPB_TotSec16 = parseInteger<uint16_t>(fdata + 19);
-	uint16_t BPB_FATSz16 = parseInteger<uint16_t>(fdata + 22);
-	uint32_t BPB_TotSec32 = parseInteger<uint32_t>(fdata + 32);
-	uint32_t BPB_FATSz32 = parseInteger<uint32_t>(fdata + 36);
-	uint32_t BPB_RootClus = parseInteger<uint32_t>(fdata + 44);
-	uint16_t BPB_FSInfo = parseInteger<uint16_t>(fdata + 48);
-	uint32_t FSI_Free_Count = parseInteger<uint32_t>(fdata + BPB_FSInfo*BPB_BytsPerSec + 488);
+	BPB_BytsPerSec = parseInteger<uint16_t, 512, 1024, 2048, 4096>
+	(fdata + 11);
+	BPB_SecPerClus = parseInteger<uint8_t>
+	(fdata + 13, [](uint8_t v){return v!=0;});
+	BPB_RsvdSecCnt = parseInteger<uint16_t>
+	(fdata + 14, [](uint16_t v){return v!=0;});
+	BPB_NumFATs = parseInteger<uint8_t>
+	(fdata + 16, [](uint8_t v){return v!=0;});
+	BPB_RootEntCnt = parseInteger<uint16_t>(fdata + 17);
+	BPB_TotSec16 = parseInteger<uint16_t>(fdata + 19);
+	BPB_FATSz16 = parseInteger<uint16_t>(fdata + 22);
+	BPB_TotSec32 = parseInteger<uint32_t>(fdata + 32);
+	BPB_FATSz32 = parseInteger<uint32_t>(fdata + 36);
+	BPB_RootClus = parseInteger<uint32_t>(fdata + 44);
+	BPB_FSInfo = parseInteger<uint16_t>(fdata + 48);
+	FSI_Free_Count = parseInteger<uint32_t>(fdata + BPB_FSInfo*BPB_BytsPerSec + 488);
 
 	// done parsing the data
 	
 	// check whether image file is FAT32 or not
-	unsigned int RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytsPerSec - 1))
+	RootDirSectors = ((BPB_RootEntCnt * 32) + (BPB_BytsPerSec - 1))
 	/ BPB_BytsPerSec;
 	
 	if (BPB_FATSz16 != 0)
@@ -100,9 +121,9 @@ int main(int argc, char *argv[])
 	else
 		TotSec = BPB_TotSec32;
 	
-	unsigned int DataSec = TotSec - (BPB_RsvdSecCnt + (BPB_NumFATs * FATSz)
+	DataSec = TotSec - (BPB_RsvdSecCnt + (BPB_NumFATs * FATSz)
 	+ RootDirSectors);
-	unsigned int CountofClusters = DataSec / BPB_SecPerClus;
+	CountofClusters = DataSec / BPB_SecPerClus;
 	
 	if (CountofClusters < 65525)
 	{
@@ -112,7 +133,7 @@ int main(int argc, char *argv[])
 	}
 	
 	// calculate the first data sector
-	unsigned int FirstDataSector = BPB_RsvdSecCnt + (BPB_NumFATs * FATSz);
+	FirstDataSector = BPB_RsvdSecCnt + (BPB_NumFATs * FATSz);
 	
 	// set initial directory to root directory
 	curdir = BPB_RootClus;
@@ -138,9 +159,7 @@ int main(int argc, char *argv[])
 		
 		if (arg1.compare("fsinfo") == 0)
 		{
-			fat32_fsinfo(BPB_BytsPerSec, BPB_SecPerClus,
-			BPB_TotSec32, BPB_NumFATs, BPB_FATSz32,
-			FSI_Free_Count);
+			fat32_fsinfo();
 		}
 		
 		else if (arg1.compare("open") == 0)
@@ -157,8 +176,7 @@ int main(int argc, char *argv[])
 			cout << "user entered " << arg1 << endl;
 			if (parse_input(inputstring, arg2))
 			{
-				fat32_close(arg2, filenamevector, modevector,
-				dirvector);
+				fat32_close(arg2);
 			}
 		}
 		
@@ -213,7 +231,7 @@ int main(int argc, char *argv[])
 			cout << "user entered " << arg1 << endl;
 			if (parse_input(inputstring, arg2))
 			{
-				// fat32_ls();
+				fat32_ls(arg2);
 			}
 		}
 		
@@ -439,9 +457,268 @@ string& arg3, string& arg4)
 	return true;
 }
 
-void fat32_fsinfo(uint16_t BPB_BytsPerSec, uint8_t BPB_SecPerClus,
-uint32_t BPB_TotSec32, uint8_t BPB_NumFATs, uint32_t BPB_FATSz32,
-uint32_t FSI_Free_Count)
+uint32_t find_dir(string dir_name, uint32_t cluster)
+{
+	uint32_t returnclus = 0;
+	uint32_t currentclus = cluster;
+	unsigned int FirstSectorofCluster = ((cluster - 2) * BPB_SecPerClus)
+	+ FirstDataSector;
+	unsigned int currentstruct;
+	string currentname;
+	string longbuffer;
+	uint8_t DIR_Attr;
+	unsigned int offset = 2;
+	bool eoc = false;
+	
+	if (cluster == BPB_RootClus)
+	{
+		offset = 0;
+	}
+	
+	while (!eoc)
+	{
+		currentstruct = FirstSectorofCluster * BPB_BytsPerSec
+		+ offset * 32;
+		
+		//
+		// actually check the attributes of the entry structure here
+		//
+		
+		DIR_Attr = *(fdata + currentstruct + 11);
+		
+		// if directory/file has long name, act accordingly
+		if ((DIR_Attr & 0xF) == 0xF)
+		{
+			// if entry structure references a directory, get name
+			if ((DIR_Attr & 0x10) == 0x10)
+			{
+				currentname.clear();
+				longbuffer.clear();
+				
+				do
+				{
+					longbuffer.push_back
+					(*(fdata + currentstruct + 30));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 28));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 24));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 22));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 20));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 18));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 16));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 14));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 9));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 7));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 5));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 3));
+					longbuffer.push_back
+					(*(fdata + currentstruct + 1));
+					
+					// if not at end of cluster
+					if ((offset + 1) * 32 < BPB_BytsPerSec
+					* BPB_SecPerClus)
+					{
+						++offset;
+					}
+					
+					// else end of cluster has been reached
+					else
+					{
+						currentclus = parseInteger
+						<uint32_t>(fdata
+						+ BPB_RsvdSecCnt
+						* BPB_BytsPerSec
+						+ currentclus * 4);
+						currentclus &= 0x0FFFFFFF;
+						FirstSectorofCluster =
+						((currentclus - 2)
+						* BPB_SecPerClus)
+						+ FirstDataSector;
+						offset = 0;
+					}
+					
+					currentstruct = FirstSectorofCluster
+					* BPB_BytsPerSec + offset * 32;
+					DIR_Attr = *(fdata + currentstruct + 11);
+				} while ((DIR_Attr & 0xF) == 0xF);
+				
+				for (unsigned int i = longbuffer.size(); i > 0
+				&& longbuffer[i - 1] + 1 > 1; --i)
+				{
+					currentname.push_back
+					(longbuffer[i - 1]);
+				}
+				
+				returnclus = parseInteger<uint16_t>
+				(fdata + currentstruct + 20);
+				returnclus = returnclus << 16;
+				returnclus += parseInteger<uint16_t>
+				(fdata + currentstruct + 26);
+				
+				// if dir_name has been found, return the
+				// cluster number
+				if (!currentname.compare(dir_name))
+				{
+					return returnclus;
+				}
+				
+				// else search the directory for dir_name
+				else
+				{
+					returnclus = find_dir(dir_name,
+					returnclus);
+					if (returnclus != 0)
+					{
+						return returnclus;
+					}
+				}
+			}
+			
+			// else structure references a file, so skip ahead
+			else
+			{
+				do
+				{
+					// if not at end of cluster
+					if ((offset + 1) * 32 < BPB_BytsPerSec
+					* BPB_SecPerClus)
+					{
+						++offset;
+					}
+					
+					// else end of cluster has been reached
+					else
+					{
+						currentclus = parseInteger
+						<uint32_t>(fdata
+						+ BPB_RsvdSecCnt
+						* BPB_BytsPerSec
+						+ currentclus * 4);
+						currentclus &= 0x0FFFFFFF;
+						FirstSectorofCluster =
+						((currentclus - 2)
+						* BPB_SecPerClus)
+						+ FirstDataSector;
+						offset = 0;
+					}
+					
+					currentstruct = FirstSectorofCluster
+					* BPB_BytsPerSec + offset * 32;
+					DIR_Attr = *(fdata + currentstruct + 11);
+				} while ((DIR_Attr & 0xF) == 0xF);
+			}
+		}
+		
+		// else directory/file has short name
+		else
+		{
+			// if structure references a directory, check name
+			if ((DIR_Attr & 0x10) == 0x10)
+			{
+				currentname.clear();
+				
+				for (unsigned int i = 0; i < 8; ++i)
+				{
+					currentname.push_back(*(fdata
+					+ currentstruct + i));
+				}
+				
+				while (currentname[currentname.size() - 1]
+				== 0x20)
+				{
+					currentname.erase(currentname.end()
+					- 1);
+				}
+				
+				if (*(fdata + currentstruct + 8) != 0x20)
+				{
+					currentname.push_back(0x2E);
+					
+					for (unsigned int i = 8; i < 11; ++i)
+					{
+						currentname.push_back(*(fdata
+						+ currentstruct + i));
+					}
+					
+					while (currentname[currentname.size()
+					- 1] == 0x20)
+					{
+						currentname.erase
+						(currentname.end() - 1);
+					}
+				}
+				
+				returnclus = parseInteger<uint16_t>
+				(fdata + currentstruct + 20);
+				returnclus = returnclus << 16;
+				returnclus += parseInteger<uint16_t>
+				(fdata + currentstruct + 26);
+				
+				// if dir_name has been found, return the
+				// cluster number
+				if (!currentname.compare(dir_name))
+				{
+					return returnclus;
+				}
+				
+				// else search the directory for dir_name
+				else
+				{
+					returnclus = find_dir(dir_name,
+					returnclus);
+					if (returnclus != 0)
+					{
+						return returnclus;
+					}
+				}
+			}
+			
+			// else structure references a file, so ignore
+		}
+		
+		// if not at end of cluster
+		if ((offset + 1) * 32 < BPB_BytsPerSec * BPB_SecPerClus)
+		{
+			++offset;
+		}
+		
+		// else end of cluster has been reached
+		else
+		{
+			currentclus = parseInteger<uint32_t>(fdata
+			+ BPB_RsvdSecCnt * BPB_BytsPerSec + currentclus * 4);
+			
+			// if end of cluster chain is found, break from loop
+			if (currentclus >= 0xFFFFFFF8)
+			{
+				eoc = true;
+			}
+			
+			// else follow cluster chain to next cluster
+			else
+			{
+				currentclus &= 0x0FFFFFFF;
+				FirstSectorofCluster = ((currentclus - 2)
+				* BPB_SecPerClus) + FirstDataSector;
+				offset = 0;
+			}
+		}
+	}
+	
+	return 0;
+}
+
+void fat32_fsinfo()
 {
 	//print summary of file system values
 
@@ -453,8 +730,7 @@ uint32_t FSI_Free_Count)
 	cout << "Number of free sectors: " << FSI_Free_Count << endl;
 }
 
-void fat32_close(string file_name, vector<string>& filenamevector,
-vector<string>& modevector, vector<uint32_t>& dirvector)
+void fat32_close(string file_name)
 {
 	for (unsigned int i = 0; i < filenamevector.size(); ++i)
 	{
@@ -471,13 +747,35 @@ vector<string>& modevector, vector<uint32_t>& dirvector)
 	cout << "could not close " << file_name << endl;
 }
 
-void fat32_cd(string dir_name, uint32_t& curdir, const uint32_t BPB_RootClus)
+void fat32_cd(string dir_name)
 {
-	if (!dir_name.compare("/"))
+	if (!dir_name.compare("\\"))
 	{
 		curdir = BPB_RootClus;
 		return;
 	}
 	
 	
+}
+
+void fat32_ls(string dir_name)
+{
+	uint32_t lsclus = 0;
+	
+	if (!dir_name.compare("\\"))
+	{
+		lsclus = BPB_RootClus;
+	}
+	
+	else
+	{
+		lsclus = find_dir(dir_name, BPB_RootClus);
+		
+		if (lsclus == 0)
+		{
+			return;
+		}
+	}
+	
+	cout << lsclus << endl;
 }
